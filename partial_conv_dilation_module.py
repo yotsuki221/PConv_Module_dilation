@@ -21,7 +21,7 @@ class PartialConvModule(nn.Module):
         self.pad = padding if padding is not None else 0
         
         if self.use_bias:
-            self.bias = nn.Parameter(torch.zeros(out_channels))
+            self.bias = nn.Parameter(torch.zeros(1, out_channels, 1, 1))
         else:
             self.register_parameter('bias', None)
 
@@ -38,7 +38,7 @@ class PartialConvModule(nn.Module):
 
         if self.dilation == 1:
             # paddingしてavgpool
-            self.make_mask = nn.AvgPool2d(
+            self.conv_mask = nn.AvgPool2d(
                 kernel_size=self.kernel_size,
                 stride=1,
                 padding=self.pad,
@@ -46,7 +46,7 @@ class PartialConvModule(nn.Module):
             )
         else:
             # 重み付けマスク用畳み込み (非学習、重みは1)
-            mask_conv = nn.Conv2d(
+            conv2 = nn.Conv2d(
                 1, 1,
                 kernel_size=self.kernel_size,
                 padding=self.pad,
@@ -55,9 +55,9 @@ class PartialConvModule(nn.Module):
             )
             # 重みを1に固定
             with torch.no_grad():
-                mask_conv.weight.data.fill_(1.0 / (kernel_size * kernel_size))
-            mask_conv.weight.requires_grad_(False)
-            self.make_mask = mask_conv
+                conv2.weight.data.fill_(1.0 / (kernel_size * kernel_size))
+            conv2.weight.requires_grad_(False)
+            self.conv_mask = conv2
 
     def forward(self, x) :
         # 入力サイズ取得
@@ -69,9 +69,9 @@ class PartialConvModule(nn.Module):
         # マスク(全1画像)
         mask = torch.ones(1, 1, h, w, device=x.device, dtype=x.dtype)
 
-        out = out / self.make_mask(mask)
+        out = out / self.conv_mask(mask)
 
         if self.use_bias:
-            out = out + self.bias.view(1, self.out_channels, 1, 1)
+            out = out + self.bias
 
         return out
