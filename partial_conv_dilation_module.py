@@ -15,7 +15,6 @@ class PartialConvModule(nn.Module):
         self.kernel_size = kernel_size
         self.dilation = dilation
         self.use_bias   = bias
-        self.out_channels = out_channels
 
         # パディング幅 (指定がなければ 0)
         self.pad = padding if padding is not None else 0
