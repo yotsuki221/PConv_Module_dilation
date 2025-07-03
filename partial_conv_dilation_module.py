@@ -18,6 +18,7 @@ class PartialConvModule(nn.Module):
         # パディング幅 (指定がなければ 0)
         self.pad = padding if padding is not None else 0
 
+        # Partial Convolution
         self.pconv = nn.Conv2d(
             in_channels,
             out_channels,
@@ -27,20 +28,23 @@ class PartialConvModule(nn.Module):
             bias=bias
         )
 
-        # 重み付けマスク用畳み込み (非学習、重みは1)
-        self.mask_conv = nn.Conv2d(
-            1, 1,
-            kernel_size=self.kernel_size,
-            padding=self.pad,
-            dilation=self.dilation,
-            bias=False
-        )
-
-        # 重みを1に固定
-        with torch.no_grad():
-            self.mask_conv.weight.data.fill_(1.0)
-        for param in self.mask_conv.parameters():
-            param.requires_grad = False
+        if self.dilation == 1:
+            # 有効ピクセル数計算用に AvgPool を用意
+            self.avgpool = nn.AvgPool2d(self.kernel_size, stride=1)
+        else:
+            # 重み付けマスク用畳み込み (非学習、重みは1)
+            self.mask_conv = nn.Conv2d(
+                1, 1,
+                kernel_size=self.kernel_size,
+                padding=self.pad,
+                dilation=self.dilation,
+                bias=False
+            )
+            # 重みを1に固定
+            with torch.no_grad():
+                self.mask_conv.weight.data.fill_(1.0)
+            for param in self.mask_conv.parameters():
+                param.requires_grad = False
 
     def forward(self, x) :
         # 入力サイズ取得
@@ -52,12 +56,18 @@ class PartialConvModule(nn.Module):
         # マスク(全1画像)
         mask = torch.ones(1, 1, h, w, device=x.device, dtype=x.dtype)
 
-        # 有効画素数の算出
-        mask_sum = self.mask_conv(mask)
-
-        # カーネル内の要素数
-        one_sum = float(self.kernel_size * self.kernel_size)
-
-        out = out * (one_sum / mask_sum)
+         # 有効画素数の算出
+        if self.dilation == 1:
+            # ゼロパディング後、AvgPoolでカーネル内の要素数を計算
+            p = self.pad
+            mask_padded = F.pad(mask, (p, p, p, p))
+            mask_pooled = self.avgpool(mask_padded)
+            out = out / mask_pooled
+        else:
+            # 有効画素数の算出
+            mask_sum = self.mask_conv(mask)
+            # カーネル内の要素数
+            one_sum = float(self.kernel_size * self.kernel_size)
+            out = out * (one_sum / mask_sum)
 
         return out
