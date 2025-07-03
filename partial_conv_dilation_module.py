@@ -18,7 +18,6 @@ class PartialConvModule(nn.Module):
         # パディング幅 (指定がなければ 0)
         self.pad = padding if padding is not None else 0
 
-        # Partial Convolution
         self.pconv = nn.Conv2d(
             in_channels,
             out_channels,
